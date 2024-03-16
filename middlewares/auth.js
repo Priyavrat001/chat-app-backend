@@ -1,7 +1,19 @@
-import { TryCatch } from "./error.js";
+import dotenv from "dotenv";
+import jwt from "jsonwebtoken";
+import { ErrorHandler } from "../utils/utility.js";
 
-export const isAuthenticated = TryCatch(async(req, res, next)=>{
-console.log(req.cookies.token)
+dotenv.config();
 
-next()
-});
+export const isAuthenticated = (req, res, next) => {
+
+    const token = req.cookies["chat-app"];
+
+    if (!token) return next(new ErrorHandler("Please login to access this route.", 401));
+
+    const decodedData = jwt.verify(token, process.env.JWT_SECRET)
+
+    req.user = decodedData._id;
+
+    next();
+
+};

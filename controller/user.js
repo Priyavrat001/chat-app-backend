@@ -3,6 +3,7 @@ import { User } from "../model/user.js";
 import { sendToken } from "../utils/features.js";
 import { TryCatch } from "../middlewares/error.js";
 import {ErrorHandler} from "../utils/utility.js"
+import { cookieOptions } from "../utils/features.js"
 
 
 // Create new user and saving in the database and adding cookie and saving user data in cookie
@@ -51,11 +52,25 @@ export const login = async (req, res, next) => {
 // Todo
 
 export const getMyProfile = TryCatch(async(req, res, next)=>{
-    // const {id} = req.query;
-    res.send("working")
-    // const user = await User.findById({id})
-})
 
+    const user = await User.findById(req.user);
+
+    res.send({success:true, user});
+});
+
+
+export const logout = TryCatch(async (req, res, next)=>{
+    return res.status(200).cookie("chat-app", "", {...cookieOptions, maxAge:0}).json({success:true, message:"Logout Sucessfully"})
+});
+
+export const searchUser = TryCatch(async (req, res, next)=>{
+
+    const {name} = req.query;
+
+    const user = await User.find()
+
+    return res.status(200).json({success:true, message:name})
+});
 
 export const deleteUser = async (req, res) => {
     try {
