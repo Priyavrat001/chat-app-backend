@@ -22,6 +22,13 @@ export const sendToken = (res, user, code, message) => {
     return res.status(code).cookie("chat-app", token, cookieOptions).json({ success: true, message })
 };
 
+export const sendResponse = (res, message, statusCode)=>{
+   
+    return res.status(statusCode).json({success:true, message:message});
+
+    
+} 
+
 
 export const emitEvent = (req, event, users, data) => { 
     console.log("emmeting event", event)

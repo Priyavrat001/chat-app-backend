@@ -8,3 +8,5 @@ export const multerUpload = multer({
 });
 
 export const singleAvatar = multerUpload.single("avatar");
+
+export const attachmentMulter = multerUpload.array("files", 5);
