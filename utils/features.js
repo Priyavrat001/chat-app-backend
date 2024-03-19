@@ -27,9 +27,14 @@ export const sendResponse = (res, message, statusCode)=>{
     return res.status(statusCode).json({success:true, message:message});
 
     
-} 
+};
 
 
 export const emitEvent = (req, event, users, data) => { 
     console.log("emmeting event", event)
+};
+
+
+export const deleteFilesFromCloudinary = async (public_id)=>{
+    
 }

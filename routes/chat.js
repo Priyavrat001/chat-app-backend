@@ -1,13 +1,14 @@
 import express from "express";
-import { addMembers, getChatDetails, getMyChats, getMyGroup, leaveGroup, newGroupChat, removeMembers, sendAttachment } from "../controller/chat.js";
+import { addMembers, deleteChat, getChatDetails, getMessages, getMyChats, getMyGroup, leaveGroup, newGroupChat, removeMembers, renameGroup, sendAttachment } from "../controller/chat.js";
 import { isAuthenticated } from "../middlewares/auth.js";
 import { attachmentMulter } from "../middlewares/multer.js";
+import { newGroupChatValidator, validateHandler } from "../utils/validator.js";
 
 const app = express.Router();
 
 app.use(isAuthenticated);
 
-app.post("/new", newGroupChat);
+app.post("/new", newGroupChatValidator(), validateHandler, newGroupChat);
 app.get("/my", getMyChats);
 app.get("/my/groups", getMyGroup);
 app.put("/addmembers", addMembers);
@@ -19,10 +20,10 @@ app.delete("/leave/:id", leaveGroup);
 app.post("/message", attachmentMulter, sendAttachment);
 
 //get message
-app.route("/:id").get(getChatDetails).put().delete()
-
+app.get("/message/:id", getMessages);
 
 //get chat detials, rename and delete
+app.route("/:id").get(getChatDetails).put(renameGroup).delete(deleteChat);
 
 
 export default app;
