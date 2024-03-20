@@ -8,7 +8,7 @@ import { User } from "../model/user.js";
 import { Message } from "../model/message.js";
 
 
-export const newGroupChat = TryCatch(async (req, res, next) => {
+export const newGroupChat = TryCatch(async (req, res, next) => { 
     const { name, members } = req.body;
 
     const allMembers = [...members, req.user];
@@ -81,11 +81,9 @@ export const getMyGroup = TryCatch(async (req, res, next) => {
 });
 
 export const addMembers = TryCatch(async (req, res, next) => {
-    const { chatId, members } = req.body
+    const { chatId, members } = req.body;
 
     const chat = await Chat.findById(chatId);
-
-    if (!members || members.length < 1) return next(new ErrorHandler("Please provide members", 400))
 
     if (!chat) return next(new ErrorHandler("Chat not found", 404));
 
