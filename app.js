@@ -6,6 +6,7 @@ import { connectDB } from "./utils/features.js";
 
 import chatRoute from "./routes/chat.js";
 import userRoute from "./routes/user.js";
+import adminRoute from "./routes/admin.js";
 
 
 dotenv.config();
@@ -20,6 +21,7 @@ app.use(cookieParser());
 
 app.use("/api/v1/user", userRoute);
 app.use("/api/v1/chat", chatRoute);
+app.use("/api/v1/admin", adminRoute);
 
 app.use(errorMiddleware);
 
