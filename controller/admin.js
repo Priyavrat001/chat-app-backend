@@ -2,13 +2,50 @@ import { TryCatch } from "../middlewares/error.js";
 import { Chat } from "../model/chat.js";
 import { User } from "../model/user.js";
 import { Message } from "../model/message.js";
+import dotenv from "dotenv";
+import { ErrorHandler } from "../utils/utility.js"
+import jwt from "jsonwebtoken";
+import { cookieOptions } from "../utils/features.js"
+import { adminSecretKey } from "../app.js";
+
+dotenv.config();
 
 
-// export const getAllUsers = TryCatch(async (req, res, next) => {
+export const adminLogin = TryCatch(async (req, res, next) => {
+
+    const { secretKey } = req.body;
+
+    const isMatch = secretKey === adminSecretKey;
+
+    if (!isMatch) return next(new ErrorHandler("Invalid admin key", 401));
+
+    const token = jwt.sign(secretKey, process.env.JWT_SECRET)
+
+    res.status(200).cookie("chat-app-admin-token", token, {
+        ...cookieOptions,
+        maxAge: 1000 * 60 * 15
+    }).json({
+        success: true,
+        message: "Admin login succesfully"
+    });
+});
+
+export const adminLogout = TryCatch(async (req, res, next) => {
+
+    res.status(200).cookie("chat-app-admin-token", "", {
+        ...cookieOptions,
+        maxAge: 0
+    }).json({
+        success: true,
+        message: "Admin logout succesfully"
+    });
+});
+
+export const getAdminData = TryCatch(async (req, res, next) => {
+
+    return res.status(200).json({admin: true });    
   
-
-//     res.status(200).json({ success: true, users: transformUsers });
-// });
+});
 
 export const getAllUsers = TryCatch(async (req, res, next) => {
     const users = await User.find({});
@@ -104,7 +141,7 @@ export const getDashboardStats = TryCatch(async (req, res, next) => {
         Chat.countDocuments(),
     ])
 
-    
+
     const today = new Date();
 
     const last7Days = new Date();
@@ -119,17 +156,17 @@ export const getDashboardStats = TryCatch(async (req, res, next) => {
             $lte: today
         }
     }).select("createdAt");
-    
+
     const dayInMiliseconds = 1000 * 60 * 60 * 24
-    
+
     last7DaysMessages.forEach((message) => {
         const indexApprox = (today.getTime() - message.createdAt.getTime()) / (dayInMiliseconds);
-        
+
         const index = Math.floor(indexApprox);
-        
-        messages[6-index]++;
+
+        messages[6 - index]++;
     })
 
-    const stats = { groupsCount, usersCount, messagesCount, totalChatsCount, messagesChart:messages }
+    const stats = { groupsCount, usersCount, messagesCount, totalChatsCount, messagesChart: messages }
     res.status(200).json({ success: true, stats });
 });

@@ -2,14 +2,14 @@ import express from "express";
 import { addMembers, deleteChat, getChatDetails, getMessages, getMyChats, getMyGroup, leaveGroup, newGroupChat, removeMembers, renameGroup, sendAttachment } from "../controller/chat.js";
 import { isAuthenticated } from "../middlewares/auth.js";
 import { attachmentMulter } from "../middlewares/multer.js";
-import { addMemberValidator, chatIdValidator, newGroupChatValidator, removeValidator, renameValidator, sendAttachmentValidator, validateHandler } from "../utils/validator.js";
+import { chatIdValidator, newGroupChatValidator, removeValidator, renameValidator, sendAttachmentValidator, validateHandler } from "../utils/validator.js";
 
 const app = express.Router();
 
 app.use(isAuthenticated);
 
 app.post("/new", newGroupChatValidator(), validateHandler, newGroupChat);
-app.get("/my", addMemberValidator(), validateHandler, getMyChats);
+app.get("/my", getMyChats);
 app.get("/my/groups", getMyGroup);
 app.put("/addmembers", addMembers);
 app.put("/removemember", removeValidator(), validateHandler,  removeMembers);

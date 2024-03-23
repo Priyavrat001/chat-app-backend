@@ -20,16 +20,19 @@ export const newUsers = TryCatch(async (req, res, next) => {
     }
 
 
+    const file = req.file;
+
+    if (!file) return next(new ErrorHandler("Please upload the avatar", 400))
+
     const user = await User.create({
         name,
         bio,
         username,
         password,
         avatar
-    })
-    if (user) return next(new ErrorHandler("User is Alreday exsit", 404))
+    });
 
-    sendToken(res, 201, "User created successfully")
+    sendToken(res, "User created successfully", 200)
 });
 
 export const login = TryCatch(async (req, res, next) => {
@@ -53,7 +56,7 @@ export const getMyProfile = TryCatch(async (req, res, next) => {
 
     const user = await User.findById(req.user);
 
-    res.send({ success: true, user });
+    res.status(200).json({ success: true, user })
 });
 
 
@@ -85,9 +88,7 @@ export const searchUser = TryCatch(async (req, res, next) => {
 export const sendFriendRequest = TryCatch(async (req, res, next) => {
     const { userId } = req.body;
 
-    const request = await Request.findOne({
-
-    });
+    const request = await Request.findOne({});
 
     if (request) return next(new ErrorHandler("Request already sent", 400))
 
@@ -130,7 +131,7 @@ export const acceptFriendRequest = TryCatch(async (req, res, next) => {
 
     emitEvent(req, REFETCH_CHATS, members);
 
-    res.status(200).json({ success: true, message: "Friend request accepted", senderId: request.sender._id })
+    return res.status(200).json({ success: true, message: "Friend request accepted", senderId: request.sender._id })
 });
 
 export const getNotifaction = TryCatch(async (req, res, next) => {
@@ -160,7 +161,7 @@ export const getMyFriends = TryCatch(async (req, res, next) => {
 
     const friends = chats.map(({ members }) => {
         const otherUser = members.find((member) => member._id !== req.user);
-        
+
         return {
             _id: otherUser._id,
             name: otherUser.name,

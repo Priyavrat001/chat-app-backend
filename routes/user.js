@@ -6,10 +6,11 @@ import { acceptRequestValidator, loginValidator, registerValidator, sendRequestV
 
 const app = express.Router();
 
-app.use(isAuthenticated);
 
 app.post("/new", singleAvatar, registerValidator(), validateHandler, newUsers);
 app.post("/login", loginValidator(), validateHandler, login);
+
+app.use(isAuthenticated);
 
 app.get("/myprofile", getMyProfile);
 app.get("/logout", logout);

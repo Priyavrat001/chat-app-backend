@@ -8,7 +8,7 @@ import { User } from "../model/user.js";
 import { Message } from "../model/message.js";
 
 
-export const newGroupChat = TryCatch(async (req, res, next) => { 
+export const newGroupChat = TryCatch(async (req, res, next) => {
     const { name, members } = req.body;
 
     const allMembers = [...members, req.user];
@@ -208,13 +208,16 @@ export const sendAttachment = TryCatch(async (req, res, next) => {
 
     const { chatId } = req.body;
 
+    const files = req.files || [];
+
+    if (files.length < 1) return next(new ErrorHandler("Please upload attachment", 400))
+
+    if (files.length > 5) return next(new ErrorHandler("Files can not be more than 5", 400))
+
     const [chat, me] = await Promise.all([
         Chat.findById(chatId),
         User.findById(req.user, "name")
     ]);
-
-    const files = req.files || [];
-
 
     if (!chat) return next(new ErrorHandler("Not able to find the chat", 404));
 
@@ -344,19 +347,19 @@ export const getMessages = TryCatch(async (req, res, next) => {
 
     const [message, totalMessagesCount] = await Promise.all([
         Message.find({ chat: chatId })
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit)
-        .populate("sender", "name")
-        .lean(),
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit)
+            .populate("sender", "name")
+            .lean(),
 
-        Message.countDocuments({chat:chatId})
+        Message.countDocuments({ chat: chatId })
 
     ]);
 
-    const totalPages = Math.ceil(totalMessagesCount/limit) || 0
+    const totalPages = Math.ceil(totalMessagesCount / limit) || 0
 
-    return res.status(200).json({success:true, message:message.reverse(), totalMessagesCount, totalPages})
+    return res.status(200).json({ success: true, message: message.reverse(), totalMessagesCount, totalPages })
 
 });
 
