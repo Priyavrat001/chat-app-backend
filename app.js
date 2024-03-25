@@ -6,29 +6,41 @@ import { connectDB } from "./utils/features.js";
 import { Server } from "socket.io";
 import { createServer } from "http";
 import { NEW_MESSAGE, NEW_MESSAGE_ALERT } from "./constants/event.js"
-import { v4 as uuid } from "uuid"
+import { v4 as uuid } from "uuid";
+import cors from "cors";
+import {v2 as cloudinary} from "cloudinary";
 
 import chatRoute from "./routes/chat.js";
 import userRoute from "./routes/user.js";
 import adminRoute from "./routes/admin.js";
 import { getSockets } from "./lib/helper.js";
 import { Message } from "./model/message.js";
+import { corsOptions } from "./constants/config.js";
 
 
 dotenv.config();
-export const envMode = process.env.NODE_ENV.trim() === "DEVELOPEMENT" || "PRODUCTION";
+export const envMode = process.env.NODE_ENV === "DEVELOPEMENT" || "PRODUCTION";
 export const adminSecretKey = process.env.ADMIN_SECRET_KEY || "sdfsfsfsfdsdsfsdf";
 const port = process.env.PORT || 4000;
 export const userSocketIDs = new Map();
 
 const app = express();
 const server = createServer(app);
-const io = new Server(server, {});
+const io = new Server(server, {});;
 
 connectDB();
+cloudinary.config({
+    cloud_name:process.env.CLOUDINARY_CLOUD_NAME,
+    api_key:process.env.CLOUDINARY_API_KEY,
+    api_secret:process.env.CLOUDINARY_API_SECRET
+})
 
 app.use(express.json());
 app.use(cookieParser());
+app.use(cors({
+    origin:["http://localhost:5173", "http://localhost:4173", process.env.CLIENT_SERVER],
+    credentials:true
+}));
 
 app.use("/api/v1/user", userRoute);
 app.use("/api/v1/chat", chatRoute);

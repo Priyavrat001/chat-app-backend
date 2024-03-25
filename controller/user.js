@@ -1,56 +1,53 @@
 import { compare } from "bcrypt";
-import { User } from "../model/user.js";
-import { Chat } from "../model/chat.js";
-import { emitEvent, sendResponse, sendToken } from "../utils/features.js";
-import { TryCatch } from "../middlewares/error.js";
-import { ErrorHandler } from "../utils/utility.js"
-import { cookieOptions } from "../utils/features.js"
-import { Request } from "../model/request.js";
 import { NEW_REQUEST, REFETCH_CHATS } from "../constants/event.js";
-import { getOtherMembers } from "../lib/helper.js";
-
+import { TryCatch } from "../middlewares/error.js";
+import { Chat } from "../model/chat.js";
+import { Request } from "../model/request.js";
+import { User } from "../model/user.js";
+import { cookieOptions, emitEvent, sendResponse, sendToken, uploadFilesToCloudinary } from "../utils/features.js";
+import { ErrorHandler } from "../utils/utility.js";
 
 // Create new user and saving in the database and adding cookie and saving user data in cookie
 export const newUsers = TryCatch(async (req, res, next) => {
     const { name, username, password, bio } = req.body;
-
-    const avatar = {
-        public_id: "dsdfd",
-        url: "fdsfd"
-    }
-
-
+  
     const file = req.file;
-
-    if (!file) return next(new ErrorHandler("Please upload the avatar", 400))
-
+  
+    if (!file) return next(new ErrorHandler("Please Upload Avatar"));
+  
+    const result = await uploadFilesToCloudinary([file]);
+  
+    const avatar = {
+      public_id: result[0].public_id,
+      url: result[0].url,
+    };
+  
     const user = await User.create({
-        name,
-        bio,
-        username,
-        password,
-        avatar
+      name,
+      bio,
+      username,
+      password,
+      avatar,
     });
+  
+    sendToken(res, user, 201, "User created");
+  });
 
-    sendToken(res, "User created successfully", 200)
-});
-
+// Login user and save token in cookie
 export const login = TryCatch(async (req, res, next) => {
-
-    const { username, password } = req.body
-
-    if (!username || !password) return next(new ErrorHandler("Invalid usename or password", 404));
-
+    const { username, password } = req.body;
+  
     const user = await User.findOne({ username }).select("+password");
-
-    if (!user) return next(new ErrorHandler("Invalid usename or password", 404));
-
-    const isMatchedPasswrod = await compare(password, user.password);
-
-    if (!isMatchedPasswrod) return next(new ErrorHandler("Invalid username or password", 404));
-
-    sendToken(res, user, 200, `Welcome Back ${user.name}`)
-});
+  
+    if (!user) return next(new ErrorHandler("Invalid Username or Password", 404));
+  
+    const isMatch = await compare(password, user.password);
+  
+    if (!isMatch)
+      return next(new ErrorHandler("Invalid Username or Password", 404));
+  
+    sendToken(res, user, 200, `Welcome Back, ${user.name}`);
+  });
 
 export const getMyProfile = TryCatch(async (req, res, next) => {
 
