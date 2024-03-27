@@ -29,17 +29,17 @@ export const newGroupChat = TryCatch(async (req, res, next) => {
 
 });
 
-export const getMyChats = TryCatch(async (req, res, next) => {
+export const getMyChats = async (req, res, next) => {
 
 
     const chats = await Chat.find({ members: req.user }).populate(
         "members",
-        "name username avatar"
+        "name avatar"
     );
 
     const transformChats = chats.map(({ _id, name, groupChat, members }) => {
 
-        const otherMembers = getOtherMembers(members, req.user)
+        const otherMembers = members.find((member)=>member._id !== req.user)
 
         return {
             _id,
@@ -56,10 +56,10 @@ export const getMyChats = TryCatch(async (req, res, next) => {
         }
     })
 
-    return res.status(200).json({ success: true, transformChats });
+    return res.status(200).json({ success: true, chats:transformChats });
 
 
-});
+};
 
 export const getMyGroup = TryCatch(async (req, res, next) => {
     const chats = await Chat.find({

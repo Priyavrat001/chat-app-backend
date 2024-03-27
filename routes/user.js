@@ -15,8 +15,8 @@ app.use(isAuthenticated);
 app.get("/myprofile", getMyProfile);
 app.get("/logout", logout);
 app.get("/search", searchUser);
-app.put("/send-request", sendRequestValidator(), validateHandler, sendFriendRequest);
-app.put("/accept-request", acceptRequestValidator(), validateHandler, acceptFriendRequest);
+app.put("/sendrequest", sendRequestValidator(), validateHandler, sendFriendRequest);
+app.put("/acceptrequest", acceptRequestValidator(), validateHandler, acceptFriendRequest);
 
 app.get("/notification", getNotifaction)
 app.get("/friends", getMyFriends)

@@ -85,7 +85,15 @@ export const searchUser = TryCatch(async (req, res, next) => {
 export const sendFriendRequest = TryCatch(async (req, res, next) => {
     const { userId } = req.body;
 
-    const request = await Request.findOne({});
+    console.log(userId)
+
+    const request = await Request.findOne({
+        $or: [
+          { sender: req.user, receiver: userId },
+          { sender: userId, receiver: req.user },
+        ],
+      });
+    
 
     if (request) return next(new ErrorHandler("Request already sent", 400))
 

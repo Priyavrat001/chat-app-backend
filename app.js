@@ -26,9 +26,12 @@ export const userSocketIDs = new Map();
 
 const app = express();
 const server = createServer(app);
-const io = new Server(server, {});;
+const io = new Server(server, {
+    cors: corsOptions,
+  });
 
 connectDB();
+
 cloudinary.config({
     cloud_name:process.env.CLOUDINARY_CLOUD_NAME,
     api_key:process.env.CLOUDINARY_API_KEY,
@@ -37,10 +40,7 @@ cloudinary.config({
 
 app.use(express.json());
 app.use(cookieParser());
-app.use(cors({
-    origin:["http://localhost:5173", "http://localhost:4173", process.env.CLIENT_SERVER],
-    credentials:true
-}));
+app.use(cors(corsOptions));
 
 app.use("/api/v1/user", userRoute);
 app.use("/api/v1/chat", chatRoute);
