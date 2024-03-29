@@ -9,13 +9,14 @@ import { NEW_MESSAGE, NEW_MESSAGE_ALERT } from "./constants/event.js"
 import { v4 as uuid } from "uuid";
 import cors from "cors";
 import {v2 as cloudinary} from "cloudinary";
+import { getSockets } from "./lib/helper.js";
+import { Message } from "./model/message.js";
+import { corsOptions } from "./constants/config.js";
+import { socketAuthenticator } from "./middlewares/auth.js";
 
 import chatRoute from "./routes/chat.js";
 import userRoute from "./routes/user.js";
 import adminRoute from "./routes/admin.js";
-import { getSockets } from "./lib/helper.js";
-import { Message } from "./model/message.js";
-import { corsOptions } from "./constants/config.js";
 
 
 dotenv.config();
@@ -45,6 +46,12 @@ app.use(cors(corsOptions));
 app.use("/api/v1/user", userRoute);
 app.use("/api/v1/chat", chatRoute);
 app.use("/api/v1/admin", adminRoute);
+
+io.use((socket, next)=>{
+    cookieParser()(socket.request, socket.request.resume, async(err)=>{
+        return await socketAuthenticator(err, socket, next);
+    })
+})
 
 io.on("connection", (socket) => {
 

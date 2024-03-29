@@ -13,4 +13,6 @@ export const corsOptions = {
     credentials: true,
   };
   
- export const CHATTU_TOKEN = "chat-app";
+ export const CHAT_APP= "chat-app";
+
+ export const CHAT_APP_ADMIN_TOKEN = "chat-app-admin-token"
