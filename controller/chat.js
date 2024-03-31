@@ -1,11 +1,10 @@
-import { TryCatch } from "../middlewares/error.js";
-import { ErrorHandler } from "../utils/utility.js";
-import { Chat } from "../model/chat.js"
-import { deleteFilesFromCloudinary, emitEvent, sendResponse } from "../utils/features.js";
 import { ALERT, NEW_ATTACHMENT, NEW_MESSAGE_ALERT, REFETCH_CHATS } from "../constants/event.js";
-import { getOtherMembers } from "../lib/helper.js";
-import { User } from "../model/user.js";
+import { TryCatch } from "../middlewares/error.js";
+import { Chat } from "../model/chat.js";
 import { Message } from "../model/message.js";
+import { User } from "../model/user.js";
+import { deleteFilesFromCloudinary, emitEvent, sendResponse, uploadFilesToCloudinary } from "../utils/features.js";
+import { ErrorHandler } from "../utils/utility.js";
 
 
 export const newGroupChat = TryCatch(async (req, res, next) => {
@@ -223,7 +222,7 @@ export const sendAttachment = TryCatch(async (req, res, next) => {
 
     if (files.length < 1) return next(new ErrorHandler("Please provide attachment", 400));
     // upload files here;
-    const attachments = [];
+    const attachments = await uploadFilesToCloudinary(files);
 
 
     const messageForDB = {

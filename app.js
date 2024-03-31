@@ -55,10 +55,8 @@ io.use((socket, next)=>{
 
 io.on("connection", (socket) => {
 
-    const user = {
-        _id: "dfd",
-        name: "nagoya"
-    }
+    const user = socket.user
+
     userSocketIDs.set(user._id.toString(), socket.id);
 
     console.log(userSocketIDs);
@@ -82,6 +80,8 @@ io.on("connection", (socket) => {
             sender: user._id,
             chat: chatId
         };
+
+        console.log("emeting", messageForRealTime)
 
         const membersSockets = getSockets(members);
         io.to(membersSockets).emit(NEW_MESSAGE, {
