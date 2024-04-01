@@ -1,4 +1,4 @@
-import { ALERT, NEW_ATTACHMENT, NEW_MESSAGE_ALERT, REFETCH_CHATS } from "../constants/event.js";
+import { ALERT, NEW_MESSAGE, NEW_MESSAGE_ALERT, REFETCH_CHATS } from "../constants/event.js";
 import { TryCatch } from "../middlewares/error.js";
 import { Chat } from "../model/chat.js";
 import { Message } from "../model/message.js";
@@ -38,7 +38,7 @@ export const getMyChats = async (req, res, next) => {
 
     const transformChats = chats.map(({ _id, name, groupChat, members }) => {
 
-        const otherMembers = members.find((member)=>member._id !== req.user)
+        const otherMembers = members.find((member) => member._id !== req.user)
 
         return {
             _id,
@@ -55,7 +55,7 @@ export const getMyChats = async (req, res, next) => {
         }
     })
 
-    return res.status(200).json({ success: true, chats:transformChats });
+    return res.status(200).json({ success: true, chats: transformChats });
 
 
 };
@@ -208,47 +208,54 @@ export const sendAttachment = TryCatch(async (req, res, next) => {
     const { chatId } = req.body;
 
     const files = req.files || [];
-
-    if (files.length < 1) return next(new ErrorHandler("Please upload attachment", 400))
-
-    if (files.length > 5) return next(new ErrorHandler("Files can not be more than 5", 400))
-
+  
+    if (files.length < 1)
+      return next(new ErrorHandler("Please Upload Attachments", 400));
+  
+    if (files.length > 5)
+      return next(new ErrorHandler("Files Can't be more than 5", 400));
+  
     const [chat, me] = await Promise.all([
-        Chat.findById(chatId),
-        User.findById(req.user, "name")
+      Chat.findById(chatId),
+      User.findById(req.user, "name"),
     ]);
-
-    if (!chat) return next(new ErrorHandler("Not able to find the chat", 404));
-
-    if (files.length < 1) return next(new ErrorHandler("Please provide attachment", 400));
-    // upload files here;
-    const attachments = await uploadFilesToCloudinary(files);
-
-
+  
+    if (!chat) return next(new ErrorHandler("Chat not found", 404));
+  
+    if (files.length < 1)
+      return next(new ErrorHandler("Please provide attachments", 400));
+  
+    //   Upload files here
+    const attachment = await uploadFilesToCloudinary(files);
+  
     const messageForDB = {
-        content: "",
-        attachments,
-        sender: me._id,
-        chat: chatId
+      content: "",
+      attachment,
+      sender: me._id,
+      chat: chatId,
     };
+  
     const messageForRealTime = {
-        ...messageForDB,
-        sender: {
-            _id: me._id,
-            name: me.name
-        }
+      ...messageForDB,
+      sender: {
+        _id: me._id,
+        name: me.name,
+      },
     };
-
+  
     const message = await Message.create(messageForDB);
-
-    emitEvent(req, NEW_ATTACHMENT, chat.members, {
-        message: messageForRealTime,
-        chatId
+  
+    emitEvent(req, NEW_MESSAGE, chat.members, {
+      message: messageForRealTime,
+      chatId,
     });
-
-    emitEvent(req, NEW_MESSAGE_ALERT, chat.members, { chatId })
-
-    return sendResponse(res, message, 200);
+  
+    emitEvent(req, NEW_MESSAGE_ALERT, chat.members, { chatId });
+  
+    return res.status(200).json({
+      success: true,
+      message,
+    });
 });
 
 export const getChatDetails = (TryCatch(async (req, res, next) => {
