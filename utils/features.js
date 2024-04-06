@@ -3,7 +3,7 @@ import dotenv from "dotenv";
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
 import { v4 as uuid } from "uuid";
-import { getBase64 } from "../lib/helper.js";
+import { getBase64, getSockets } from "../lib/helper.js";
 
 
 dotenv.config();
@@ -11,8 +11,8 @@ dotenv.config();
 export const cookieOptions = {
   maxAge: 15 * 24 * 60 * 60 * 1000,
   sameSite: "none",
-  // httpOnly: true,
-  // secure: true,
+  httpOnly: true,
+  secure: true,
 };
 
 export const connectDB = () => {
@@ -41,7 +41,12 @@ export const sendResponse = (res, message, statusCode) => {
 
 
 export const emitEvent = (req, event, users, data) => {
-  console.log("emmeting event", event)
+
+  const io = req.app.get("io");
+
+  const userSocket = getSockets(users);
+
+  io.to(userSocket).emit(event, data);
 };
 
 

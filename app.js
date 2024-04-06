@@ -5,7 +5,7 @@ import { errorMiddleware } from "./middlewares/error.js";
 import { connectDB } from "./utils/features.js";
 import { Server } from "socket.io";
 import { createServer } from "http";
-import { NEW_MESSAGE, NEW_MESSAGE_ALERT } from "./constants/event.js"
+import { NEW_MESSAGE, NEW_MESSAGE_ALERT, START_TYPING, STOP_TYPING } from "./constants/event.js"
 import { v4 as uuid } from "uuid";
 import cors from "cors";
 import {v2 as cloudinary} from "cloudinary";
@@ -51,7 +51,9 @@ io.use((socket, next)=>{
     cookieParser()(socket.request, socket.request.resume, async(err)=>{
         return await socketAuthenticator(err, socket, next);
     })
-})
+});
+
+app.set("io", io);
 
 io.on("connection", (socket) => {
 
@@ -101,7 +103,23 @@ io.on("connection", (socket) => {
         }
         console.log("new message", messageForRealTime)
 
-    })
+    });
+
+    socket.on(START_TYPING, ({members, chatId})=>{
+        console.log("start typing",members, chatId);
+
+        const membersSockets = getSockets(members);
+
+        socket.to(membersSockets).emit(START_TYPING, {chatId});
+    });
+
+    socket.on(STOP_TYPING, ({members, chatId})=>{
+        console.log("Stoped typing",members, chatId);
+
+        const membersSockets = getSockets(members);
+
+        socket.to(membersSockets).emit(STOP_TYPING, {chatId});
+    });
 
     socket.on("disconnect", () => {
         console.log("User disconnected");
