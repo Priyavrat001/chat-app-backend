@@ -1,4 +1,5 @@
 import { ALERT, NEW_MESSAGE, NEW_MESSAGE_ALERT, REFETCH_CHATS } from "../constants/event.js";
+import { getOtherMembers } from "../lib/helper.js";
 import { TryCatch } from "../middlewares/error.js";
 import { Chat } from "../model/chat.js";
 import { Message } from "../model/message.js";
@@ -28,41 +29,45 @@ export const newGroupChat = TryCatch(async (req, res, next) => {
 
 });
 
-export const getMyChats = async (req, res, next) => {
+export const getMyChats = TryCatch(async (req, res, next) => {
 
 
     const chats = await Chat.find({ members: req.user }).populate(
         "members",
-        "name avatar"
+        "name avatar",
     );
 
     const transformChats = chats.map(({ _id, name, groupChat, members }) => {
 
-        const otherMembers = members.find((member) => member._id !== req.user)
-
+        const otherMembers = getOtherMembers(members, req.user)
         return {
             _id,
             groupChat,
-
-            avatar: groupChat ? members.slice(0, 3).map(({ avatar }) => avatar.url) : [otherMembers.avatar.url],
+            avatar: groupChat
+              ? members.slice(0, 3).map(({ avatar }) => avatar.url)
+              : [otherMembers.avatar.url],
             name: groupChat ? name : otherMembers.name,
             members: members.reduce((prev, curr) => {
-                if (curr._id.toString() !== req.user.toString()) {
-                    prev.push(curr._id);
-                }
-                return prev;
-            }, [])
-        }
-    })
+              if (curr._id.toString() !== req.user.toString()) {
+                prev.push(curr._id);
+              }
+              return prev;
+            }, []),
+          };
+        });
+      
+        return res.status(200).json({
+          success: true,
+          chats: transformChats,
+        });
 
-    return res.status(200).json({ success: true, chats: transformChats });
 
-
-};
+});
 
 export const getMyGroup = TryCatch(async (req, res, next) => {
     const chats = await Chat.find({
         members: req.user,
+        groupChat:true,
         creator: req.user
     }).populate("members", "name avatar");
 
@@ -86,7 +91,7 @@ export const addMembers = TryCatch(async (req, res, next) => {
 
     if (!chat) return next(new ErrorHandler("Chat not found", 404));
 
-    if (chat.groupChat === false) return next(new ErrorHandler("This is not a group chat", 400));
+    if (!chat.groupChat) return next(new ErrorHandler("This is not a group chat", 400));
 
     if (!chat.creator) return next(new ErrorHandler("Your not alowed to add members", 403));
 
@@ -133,7 +138,7 @@ export const removeMembers = TryCatch(async (req, res, next) => {
 
     if (!chat) return next(new ErrorHandler("Chat not found", 404));
 
-    if (chat.groupChat === false) return next(new ErrorHandler("This is not a group chat", 400));
+    if (!chat.groupChat) return next(new ErrorHandler("This is not a group chat", 400));
 
     if (!chat.creator) return next(new ErrorHandler("Your not alowed to add members", 403));
 

@@ -6,6 +6,7 @@ import { Request } from "../model/request.js";
 import { User } from "../model/user.js";
 import { cookieOptions, emitEvent, sendResponse, sendToken, uploadFilesToCloudinary } from "../utils/features.js";
 import { ErrorHandler } from "../utils/utility.js";
+import { getOtherMembers } from "../lib/helper.js";
 
 // Create new user and saving in the database and adding cookie and saving user data in cookie
 export const newUsers = TryCatch(async (req, res, next) => {
@@ -157,32 +158,39 @@ export const getNotifaction = TryCatch(async (req, res, next) => {
 })
 
 export const getMyFriends = TryCatch(async (req, res, next) => {
-
     const chatId = req.query.chatId;
 
-    const chats = await Chat.find({ members: req.user }).populate("members", "name avatar");
-
+    const chats = await Chat.find({
+      members: req.user,
+    //   groupChat: false,
+    }).populate("members", "name avatar");
+  
     const friends = chats.map(({ members }) => {
-        const otherUser = members.find((member) => member._id !== req.user);
-
-        return {
-            _id: otherUser._id,
-            name: otherUser.name,
-            avatar: otherUser.avatar.url
-        }
+      const otherUser = getOtherMembers(members, req.user);
+  
+      return {
+        _id: otherUser._id,
+        name: otherUser.name,
+        avatar: otherUser.avatar.url,
+      };
     });
-
+  
     if (chatId) {
-        const chat = await Chat.findById(chatId);
-
-        const avilableFriends = friends.filter(
-            (friend) => !chat.members.includes(friend._id)
-        );
-
-        return res.status(200).json({ success: true, avilableFriends })
+      const chat = await Chat.findById(chatId);
+  
+      const availableFriends = friends.filter(
+        (friend) => !chat.members.includes(friend._id)
+      );
+  
+      return res.status(200).json({
+        success: true,
+        friends: availableFriends,
+      });
     } else {
-
-        return res.status(200).json({ success: true, friends })
+      return res.status(200).json({
+        success: true,
+        friends,
+      });
     }
 
 })
