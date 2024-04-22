@@ -43,10 +43,8 @@ export const sendResponse = (res, message, statusCode) => {
 export const emitEvent = (req, event, users, data) => {
 
   const io = req.app.get("io");
-
-  const userSocket = getSockets(users);
-
-  io.to(userSocket).emit(event, data);
+  const usersSocket = getSockets(users);
+  io.to(usersSocket).emit(event, data);
 };
 
 
