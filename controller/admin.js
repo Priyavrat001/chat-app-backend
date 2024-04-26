@@ -15,19 +15,22 @@ export const adminLogin = TryCatch(async (req, res, next) => {
 
     const { secretKey } = req.body;
 
-    const isMatch = secretKey === adminSecretKey;
-
-    if (!isMatch) return next(new ErrorHandler("Invalid admin key", 401));
-
-    const token = jwt.sign(secretKey, process.env.JWT_SECRET)
-
-    res.status(200).cookie("chat-app-admin-token", token, {
+    const isMatched = secretKey === adminSecretKey;
+  
+    if (!isMatched) return next(new ErrorHandler("Invalid Admin Key", 401));
+  
+    const token = jwt.sign(secretKey, process.env.JWT_SECRET);
+  
+    return res
+      .status(200)
+      .cookie("chat-app-admin-token", token, {
         ...cookieOptions,
-        maxAge: 1000 * 60 * 15
-    }).json({
+        maxAge: 1000 * 60 * 15,
+      })
+      .json({
         success: true,
-        message: "Admin login succesfully"
-    });
+        message: "Authenticated Successfully, Welcome Admin",
+      });
 });
 
 export const adminLogout = TryCatch(async (req, res, next) => {
@@ -88,7 +91,7 @@ export const allChats = TryCatch(async (req, res, next) => {
             return {
                 _id,
                 name,
-                groupChat,
+                groupChat:groupChat,
                 avatar: members.slice(0, 3).map((member) => member.avatar.url),
                 members: members.map(({ _id, name, avatar }) => (
                     {
@@ -113,23 +116,30 @@ export const allChats = TryCatch(async (req, res, next) => {
 
 export const getAllMessages = TryCatch(async (req, res, next) => {
 
-    const messages = await Message.find({}).populate("sender", "name avatar").populate("chat", "groupChat");
+    const messages = await Message.find({})
+    .populate("sender", "name avatar")
+    .populate("chat", "groupChat");
 
-    const transformMessage = messages.map(({ content, attachments, sender, createdAt, chat }) => ({
-        _id,
-        attachments,
-        content,
-        createdAt,
-        chat: chat._id,
-        groupChat: chat.groupChat,
-        sender: {
-            _id: sender._id,
-            name: sender.name,
-            avatar: sender.avatar.url
-        }
-    }))
+  const transformedMessages = messages.map(
+    ({ content, attachments, _id, sender, createdAt, chat }) => ({
+      _id,
+      attachments,
+      content,
+      createdAt,
+      chat: chat?._id,
+      groupChat: chat?.groupChat,
+      sender: {
+        _id: sender._id,
+        name: sender.name,
+        avatar: sender.avatar.url,
+      },
+    })
+  );
 
-    res.status(200).json({ success: true, messages: transformMessage });
+  return res.status(200).json({
+    success: true,
+    messages: transformedMessages,
+  });
 });
 
 export const getDashboardStats = TryCatch(async (req, res, next) => {
