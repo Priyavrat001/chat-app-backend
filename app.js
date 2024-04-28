@@ -119,7 +119,6 @@ io.use((socket, next) => {
     });
   
     socket.on(CHAT_LEAVED, ({ userId, members }) => {
-      console.log(userId)
       onlineUsers.delete(userId.toString());
   
       const membersSocket = getSockets(members);
