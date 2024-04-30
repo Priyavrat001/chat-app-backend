@@ -86,6 +86,8 @@ io.use((socket, next) => {
         sender: user._id,
         chat: chatId,
       };
+
+      console.log(messageForDB, "Messages")
   
       const membersSocket = getSockets(members);
       io.to(membersSocket).emit(NEW_MESSAGE, {
