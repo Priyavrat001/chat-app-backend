@@ -53,6 +53,8 @@ const newGroupChat = TryCatch(async (req, res, next) => {
         }, []),
       };
     });
+
+    console.log(transformedChats)
   
     return res.status(200).json({
       success: true,
