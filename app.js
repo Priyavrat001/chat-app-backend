@@ -67,6 +67,7 @@ io.use((socket, next) => {
   
   io.on("connection", (socket) => {
     const user = socket.user;
+
     userSocketIDs.set(user._id.toString(), socket.id);
   
     socket.on(NEW_MESSAGE, async ({ chatId, members, message }) => {
@@ -80,14 +81,14 @@ io.use((socket, next) => {
         chat: chatId,
         createdAt: new Date().toISOString(),
       };
-  
+
       const messageForDB = {
         content: message,
         sender: user._id,
         chat: chatId,
       };
 
-      console.log(messageForDB, "Messages")
+      // console.log(messageForDB)
   
       const membersSocket = getSockets(members);
       io.to(membersSocket).emit(NEW_MESSAGE, {
