@@ -9,7 +9,7 @@ import { CHAT_JOINED, CHAT_LEAVED, NEW_MESSAGE, NEW_MESSAGE_ALERT, ONLINE_USERS,
 import { v4 as uuid } from "uuid";
 import cors from "cors";
 import {v2 as cloudinary} from "cloudinary";
-import { getSockets } from "./lib/helper.js";
+import { getCalledId, getSockets } from "./lib/helper.js";
 import { Message } from "./model/message.js";
 import { corsOptions } from "./constants/config.js";
 import { socketAuthenticator } from "./middlewares/auth.js";
@@ -17,6 +17,8 @@ import { socketAuthenticator } from "./middlewares/auth.js";
 import chatRoute from "./routes/chat.js";
 import userRoute from "./routes/user.js";
 import adminRoute from "./routes/admin.js";
+import { ACCEPT_AUDIO_CALL, END_AUDIO_CALL, ICE_CANDIDATE, NEW_AUDIO_CALL_ALERT, NEW_AUDIO_CALL_ANSWER, NEW_AUDIO_CALL_OFFER } from "./constants/events.js";
+import { User } from "./model/user.js";
 
 
 dotenv.config();
@@ -127,6 +129,92 @@ io.use((socket, next) => {
       const membersSocket = getSockets(members);
       io.to(membersSocket).emit(ONLINE_USERS, Array.from(onlineUsers));
     });
+
+    socket.on(NEW_AUDIO_CALL_ALERT, async({chatId, userId, calledId})=>{
+
+      const user = await User.findById({_id:userId});
+      const calledUserId = (calledId?._id || calledId)?.toString();
+      const calledUserSocketId = userSocketIDs.get(calledUserId);
+
+      if(calledUserSocketId){
+        socket.to(calledUserSocketId).emit(NEW_AUDIO_CALL_ALERT, {
+          callerInfo:user,
+          chatId
+        })
+      }
+    });
+
+    socket.on(ACCEPT_AUDIO_CALL, ({callerId, chatId})=>{
+      socket.to(
+        userSocketIDs.get(callerId)
+      ).emit(ACCEPT_AUDIO_CALL, {
+        callerId,
+        chatId
+      });
+    });
+
+    // Audio call offer
+socket.on(NEW_AUDIO_CALL_OFFER, ({ calledId, callerId, chatId, offer }) => {
+  const calledUserSocketId = userSocketIDs.get(calledId);
+
+  if (calledUserSocketId) {
+    io.to(calledUserSocketId).emit(NEW_AUDIO_CALL_OFFER, {
+      callerId,
+      calledId,
+      chatId,
+      offer,
+    });
+  }
+});
+
+socket.on(NEW_AUDIO_CALL_ANSWER, ({ callerId, calledId, chatId, answer }) => {
+    const callerSocketId = userSocketIDs.get(callerId);
+
+    if (callerSocketId) {
+      io.to(callerSocketId).emit(NEW_AUDIO_CALL_ANSWER, {
+        callerId,
+        calledId,
+        chatId,
+        answer,
+      });
+    }
+  }
+);
+
+socket.on(ICE_CANDIDATE, ({ callerId, calledId, chatId, candidate }) => {
+    const otherUserId = socket.user._id.toString() === callerId.toString()
+      ? calledId
+      : callerId;
+
+    const otherUserSocketId = userSocketIDs.get(otherUserId);
+
+    if (otherUserSocketId) {
+      io.to(otherUserSocketId).emit(ICE_CANDIDATE, {
+        callerId,
+        calledId,
+        chatId,
+        candidate,
+      });
+    }
+  }
+);
+
+socket.on(END_AUDIO_CALL, ({ callerId, calledId, chatId }) => {
+    const otherUserId = socket.user._id.toString() === callerId
+      ? calledId
+      : callerId;
+
+    const otherUserSocketId = userSocketIDs.get(otherUserId);
+
+    if (otherUserSocketId) {
+      io.to(otherUserSocketId).emit(END_AUDIO_CALL, {
+        callerId,
+        calledId,
+        chatId,
+      });
+    }
+  }
+);
   
     socket.on("disconnect", () => {
       userSocketIDs.delete(user._id.toString());
