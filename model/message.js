@@ -17,6 +17,16 @@ const schema = new mongoose.Schema({
         ref:"User",
         required:true
     },
+    deliveredTo:[{
+        type:Types.ObjectId,
+        ref:"User",
+        default:[]
+    }],
+    readBy:[{
+        type:Types.ObjectId,
+        ref:"User",
+        default:[]
+    }],
     chat:{
         type:Types.ObjectId,
         ref:"Chat",

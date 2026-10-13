@@ -28,6 +28,10 @@ Typical HTTP flow: Express middleware parses JSON, cookies, and CORS; a route ma
 | `middlewares/error.js` | Async controller wrapper and centralized Express error handler. |
 | `middlewares/multer.js` | Avatar and attachment upload limits and multipart field names. |
 | `utils/validator.js` | `express-validator` rules and validation-result handling. |
+| `controller/ai/ai.controller.js` | Authenticated AI request handlers and response shaping. |
+| `routes/ai/ai.routes.js` | Validated AI endpoint definitions. |
+| `services/ai.service.js` | Bounded chat-context loading, history retrieval, and Gemini API requests. |
+| `utils/ai/aiPrompts.js` | Reusable, context-grounded prompts for suggestions, summaries, and history answers. |
 | `utils/features.js` | Mongo connection, token/cookie response helpers, Socket.IO API-event helper, Cloudinary upload helper. |
 | `utils/utility.js` | `ErrorHandler`, the application error type. |
 | `constants/config.js` | CORS origins and cookie names. |
@@ -70,6 +74,8 @@ The server defaults to port `4000`. Startup calls `connectDB()` and logs a Mongo
 | `CLOUDINARY_CLOUD_NAME` | Cloudinary cloud name. |
 | `CLOUDINARY_API_KEY` | Cloudinary API key. |
 | `CLOUDINARY_API_SECRET` | Cloudinary API secret. |
+| `GEMINI_API_KEY` | Private Gemini API key used by the authenticated AI endpoints. Keep it in `.env`; never expose it to the frontend or commit it. |
+| `GEMINI_MODEL` | Optional Gemini model name; defaults to `gemini-2.5-flash`. |
 
 The cookie options are `httpOnly`, `secure`, `sameSite: "none"`, and a 15-day max age for user login. This requires HTTPS-compatible cookie behavior in the browser; configure local development and production origins accordingly. Socket.IO uses credentialed CORS and authenticates from the same `chat-app` cookie.
 
@@ -124,6 +130,20 @@ Every route in this group requires user authentication.
 | `DELETE /chat/:id` | Chat ID in `id`. | Group deletion is creator-only; direct-chat deletion is restricted to a member. Deletes chat messages and attempts attachment cleanup, emits `REFETCH_CHATS`, and returns `{ success, message }`. Attachment cleanup is currently incomplete; see known issues. |
 
 For group creation and renaming, the controller uses the property name `groupChat`; the Mongoose schema currently declares `groupchat`. This mismatch can affect the group behavior described above.
+
+### AI Services (`/api/v1/ai`)
+
+AI endpoints require a logged-in user. Send the `chat-app` authentication cookie and a JSON request with `Content-Type: application/json`. Each request checks that the user is a member of the requested chat. Gemini receives only text messages from that chat; attachment-only messages and uploaded files are excluded. The backend requires `GEMINI_API_KEY`; `GEMINI_MODEL` is optional and defaults to `gemini-2.5-flash`. Keep the API key in the backend `.env` file and never expose it in frontend code.
+
+| Method and path | Request body | Success response |
+| --- | --- | --- |
+| `POST /api/v1/ai/reply-suggestions` | `{ "chatId": "<MongoDB chat ID>" }` | `{ "success": true, "suggestions": ["...", "...", "..."] }`. Generates exactly three reply options from up to the 20 latest text messages. |
+| `POST /api/v1/ai/summarize` | `{ "chatId": "<MongoDB chat ID>" }` | `{ "success": true, "summary": "...", "decisions": ["..."], "questions": ["..."], "actionItems": ["..."] }`. Summarizes up to the 100 latest text messages. |
+| `POST /api/v1/ai/ask-history` | `{ "chatId": "<MongoDB chat ID>", "question": "..." }` | `{ "success": true, "answer": "...", "citations": ["<message ID>"], "sources": [{ "messageId": "<message ID>", "sender": "...", "createdAt": "<ISO timestamp>", "excerpt": "..." }] }`. The question must be a non-empty string of at most 500 characters. |
+
+The history endpoint searches up to the 500 latest text messages using keyword matching, then sends at most 20 matching messages to Gemini. If the scan finds no matching messages, it returns `{ "success": true, "answer": "I couldn't find relevant messages in the recent chat history to answer that.", "citations": [], "sources": [] }` without calling Gemini. This is bounded keyword retrieval, not embeddings/vector search, so older messages or different wording may not match.
+
+AI output is generated on demand and is not sent or saved as a chat message. Errors use `{ "success": false, "message": "<reason>" }`. Invalid input or no usable text messages returns HTTP 400; missing authentication returns 401; a missing chat or non-member request returns 404. Missing Gemini configuration and rate limits return 503, provider timeouts return 504, and other provider failures or invalid provider output return 502. Provider rejection details are intentionally not included in the API response.
 
 ### Admin Routes (`/admin`)
 
@@ -251,3 +271,18 @@ Available npm scripts:
 | `npm start` | Runs `node app.js`. |
 
 Runtime dependencies are `bcrypt`, `cloudinary`, `cookie-parser`, `cors`, `dotenv`, `express`, `express-validator`, `jsonwebtoken`, `mongoose`, `multer`, `socket.io`, and `uuid`. `@faker-js/faker` and `nodemon` are development dependencies.
+
+## Video calling
+
+The backend relays one-to-one video-call invitations and WebRTC signaling over the authenticated Socket.IO connection. Video and audio media are exchanged peer-to-peer by the browsers; the backend does not process or store call media.
+
+| Event | Payload | Server behavior |
+| --- | --- | --- |
+| `USER_VIDEO_CALL` (`NEW_VIDEO_CALL_ALERT`) | Caller to server: `{ calledId, chatId }`. Server to callee: `{ callerInfo, chatId }`. | Routes the invitation to the called user's connected socket and attaches caller details from the authenticated socket. |
+| `ACCEPT_VIDEO_CALL` | `{ callerId, calledId, chatId }` | Verifies the accepting socket matches `calledId` and forwards acceptance to the caller. |
+| `NEW_VIDEO_CALL_OFFER` | `{ callerId, calledId, chatId, offer }` | Forwards a WebRTC offer from the authenticated caller to the called user. |
+| `NEW_VIDEO_CALL_ANSWER` | `{ callerId, calledId, chatId, answer }` | Forwards a WebRTC answer from the authenticated called user to the caller. |
+| `VIDEO_ICE_CANDIDATE` | `{ callerId, calledId, chatId, candidate }` | Forwards an ICE candidate between the two identified participants when the authenticated socket belongs to the call. |
+| `END_VIDEO_CALL` | `{ callerId, calledId, chatId }` | Notifies the other participant when either authenticated call participant ends the call. |
+
+The frontend and backend event constants are maintained in `chat-app-frontend/src/constants/events.js` and `constants/events.js`, respectively; keep their values synchronized when changing signaling. The server currently uses an in-memory one-socket-per-user map for delivery, so multiple simultaneous sessions for one account may affect which browser receives a call. Network paths that cannot connect using the configured STUN server may require TURN configuration.

@@ -1,5 +1,5 @@
 import { ALERT, NEW_MESSAGE, NEW_MESSAGE_ALERT, REFETCH_CHATS } from "../constants/event.js";
-import { getOtherMembers } from "../lib/helper.js";
+import { getMessageReceipts, getMessageStatus, getOtherMembers } from "../lib/helper.js";
 import { TryCatch } from "../middlewares/error.js";
 import { Chat } from "../model/chat.js";
 import { Message } from "../model/message.js";
@@ -223,6 +223,8 @@ const sendAttachments = TryCatch(async (req, res, next) => {
   ]);
 
   if (!chat) return next(new ErrorHandler("Chat not found", 404));
+  if (!chat.members.some((member) => member.toString() === req.user.toString()))
+    return next(new ErrorHandler("You are not a member of this chat", 403));
 
   if (files.length < 1)
     return next(new ErrorHandler("Please provide attachments", 400));
@@ -230,29 +232,45 @@ const sendAttachments = TryCatch(async (req, res, next) => {
   //   Upload files here
   const attachment = await uploadFilesToCloudinary(files);
 
+  const { deliveredTo, readBy } = await getMessageReceipts(
+    req.app.get("io"),
+    chatId,
+    me._id,
+    chat.members,
+  );
+  const recipientCount = chat.members.length - 1;
   const messageForDB = {
     content: "",
     attachment,
     sender: me._id,
     chat: chatId,
+    deliveredTo,
+    readBy,
   };
 
+  const message = await Message.create(messageForDB);
   const messageForRealTime = {
     ...messageForDB,
+    _id: message._id,
+    createdAt: message.createdAt,
+    recipientCount,
+    status: getMessageStatus(deliveredTo, readBy, recipientCount),
     sender: {
       _id: me._id,
       name: me.name,
     },
   };
 
-  const message = await Message.create(messageForDB);
-
-  emitEvent(req, NEW_MESSAGE, chat.members, {
+  const io = req.app.get("io");
+  io.to(chat.members.map((member) => member.toString())).emit(NEW_MESSAGE, {
     message: messageForRealTime,
     chatId,
   });
 
-  emitEvent(req, NEW_MESSAGE_ALERT, chat.members, { chatId });
+  const recipientIds = chat.members.filter(
+    (member) => member.toString() !== me._id.toString(),
+  ).map((member) => member.toString());
+  io.to(recipientIds).emit(NEW_MESSAGE_ALERT, { chatId });
 
   return res.status(200).json({
     success: true,
@@ -391,10 +409,23 @@ const getMessages = TryCatch(async (req, res, next) => {
   ]);
 
   const totalPages = Math.ceil(totalMessagesCount / resultPerPage) || 0;
+  const recipientCount = chat.members.length - 1;
+  const messagesWithStatus = messages.map((message) => {
+    const deliveredTo = (message.deliveredTo || []).map((id) => id.toString());
+    const readBy = (message.readBy || []).map((id) => id.toString());
+
+    return {
+      ...message,
+      deliveredTo,
+      readBy,
+      recipientCount,
+      status: getMessageStatus(deliveredTo, readBy, recipientCount),
+    };
+  });
 
   return res.status(200).json({
     success: true,
-    messages: messages.reverse(),
+    messages: messagesWithStatus.reverse(),
     totalPages,
   });
 });
