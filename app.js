@@ -46,6 +46,16 @@ cloudinary.config({
 app.use(express.json());
 app.use(cookieParser());
 app.use(cors(corsOptions));
+app.locals.apiMetrics = { requests: 0, failures: 0, totalResponseTimeMs: 0 };
+app.use((req, res, next) => {
+  const startedAt = Date.now();
+  app.locals.apiMetrics.requests += 1;
+  res.on("finish", () => {
+    if (res.statusCode >= 400) app.locals.apiMetrics.failures += 1;
+    app.locals.apiMetrics.totalResponseTimeMs += Date.now() - startedAt;
+  });
+  next();
+});
 
 app.use("/api/v1/user", userRoute);
 app.use("/api/v1/chat", chatRoute);
@@ -73,6 +83,13 @@ io.on("connection", (socket) => {
   const user = socket.user;
   const userId = user._id.toString();
 
+  User.updateOne({ _id: user._id }, { $set: { lastSeenAt: new Date() } })
+    .catch((error) => console.error("Unable to update user activity:", error));
+  const activityInterval = setInterval(() => {
+    User.updateOne({ _id: user._id }, { $set: { lastSeenAt: new Date() } })
+      .catch((error) => console.error("Unable to update user activity:", error));
+  }, 5 * 60 * 1000);
+
   userSocketIDs.set(userId, socket.id);
   socket.join(userId);
 
@@ -81,6 +98,10 @@ io.on("connection", (socket) => {
       const chat = await Chat.findOne({ _id: chatId, members: user._id });
       if (!chat) {
         acknowledge?.({ success: false, message: "Chat not found or access denied." });
+        return;
+      }
+      if (chat.status && chat.status !== "active") {
+        acknowledge?.({ success: false, message: "This group is not available for messaging." });
         return;
       }
 
@@ -151,6 +172,7 @@ io.on("connection", (socket) => {
 
       socket.data.activeChatId = chatId.toString();
       onlineUsers.add(userId);
+      await User.updateOne({ _id: user._id }, { $set: { lastSeenAt: new Date() } });
 
       const unreadMessages = await Message.find({
         chat: chatId,
@@ -385,7 +407,10 @@ io.on("connection", (socket) => {
   });
 
   socket.on("disconnect", () => {
+    clearInterval(activityInterval);
     if (userSocketIDs.get(userId) === socket.id) userSocketIDs.delete(userId);
+    User.updateOne({ _id: user._id }, { $set: { lastSeenAt: new Date() } })
+      .catch((error) => console.error("Unable to update user last-seen time:", error));
     onlineUsers.delete(user._id.toString());
     socket.broadcast.emit(ONLINE_USERS, Array.from(onlineUsers));
   });

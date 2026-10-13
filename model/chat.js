@@ -5,13 +5,21 @@ const schema = new mongoose.Schema({
         type:String,
         required:true
     },
-    groupchat:{
+    groupChat:{
         type:Boolean,
         default:false
+    },
+    groupchat:{
+        type:Boolean
     },
     creator:{
         type:Types.ObjectId,
         ref:"User"
+    },
+    status:{
+        type:String,
+        enum:["active", "restricted", "archived"],
+        default:"active"
     },
     members:[{
         type:Types.ObjectId,
@@ -20,6 +28,12 @@ const schema = new mongoose.Schema({
 
 },{
     timestamps:true
+});
+
+schema.pre("init", function (document) {
+    if (document.groupChat == null && document.groupchat != null) {
+        document.groupChat = document.groupchat;
+    }
 });
 
 export const Chat = mongoose.models.Chat || mongoose.model("Chat", schema);

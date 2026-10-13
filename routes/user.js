@@ -1,8 +1,9 @@
 import express from "express";
-import { acceptFriendRequest, getMyFriends, getMyProfile, getNotifaction, login, logout, newUsers, searchUser, sendFriendRequest } from "../controller/user.js";
+import { acceptFriendRequest, createReport, getMyFriends, getMyProfile, getNotifaction, login, logout, newUsers, searchUser, sendFriendRequest } from "../controller/user.js";
 import { isAuthenticated } from "../middlewares/auth.js";
 import { singleAvatar } from "../middlewares/multer.js";
 import { acceptRequestValidator, loginValidator, registerValidator, sendRequestValidator, validateHandler } from "../utils/validator.js";
+import { body } from "express-validator";
 
 const app = express.Router();
 
@@ -20,6 +21,15 @@ app.put("/acceptrequest", acceptRequestValidator(), validateHandler, acceptFrien
 
 app.get("/notification", getNotifaction)
 app.get("/friends", getMyFriends)
+app.post(
+  "/report",
+  body("reason").isString().trim().notEmpty().isLength({ max: 1000 }),
+  body("targetUser").optional().isMongoId(),
+  body("targetChat").optional().isMongoId(),
+  body("targetMessage").optional().isMongoId(),
+  validateHandler,
+  createReport,
+);
 
 
 export default app;

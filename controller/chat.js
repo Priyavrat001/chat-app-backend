@@ -30,7 +30,10 @@ const newGroupChat = TryCatch(async (req, res, next) => {
 });
 
 const getMyChats = TryCatch(async (req, res, next) => {
-  const chats = await Chat.find({ members: req.user }).populate(
+  const chats = await Chat.find({
+    members: req.user,
+    $or: [{ status: "active" }, { status: { $exists: false } }],
+  }).populate(
     "members",
     "name avatar"
   );
@@ -63,8 +66,11 @@ const getMyChats = TryCatch(async (req, res, next) => {
 const getMyGroups = TryCatch(async (req, res, next) => {
   const chats = await Chat.find({
     members: req.user,
-    groupChat: true,
     creator: req.user,
+    $and: [
+      { $or: [{ groupChat: true }, { groupchat: true }] },
+      { $or: [{ status: "active" }, { status: { $exists: false } }] },
+    ],
   }).populate("members", "name avatar");
 
   const groups = chats.map(({ members, _id, groupChat, name }) => ({
@@ -85,7 +91,8 @@ const addMembers = TryCatch(async (req, res, next) => {
 
   const chat = await Chat.findById(chatId);
 
-  if (!chat) return next(new ErrorHandler("Chat not found", 404));
+  if (!chat || (chat.status && chat.status !== "active"))
+    return next(new ErrorHandler("Chat not found or unavailable", 404));
 
   if (!chat.groupChat)
     return next(new ErrorHandler("This is not a group chat", 400));
@@ -133,7 +140,8 @@ const removeMember = TryCatch(async (req, res, next) => {
     User.findById(userId, "name"),
   ]);
 
-  if (!chat) return next(new ErrorHandler("Chat not found", 404));
+  if (!chat || (chat.status && chat.status !== "active"))
+    return next(new ErrorHandler("Chat not found or unavailable", 404));
 
   if (!chat.groupChat)
     return next(new ErrorHandler("This is not a group chat", 400));
@@ -280,7 +288,11 @@ const sendAttachments = TryCatch(async (req, res, next) => {
 
 const getChatDetails = TryCatch(async (req, res, next) => {
   if (req.query.populate === "true") {
-    const chat = await Chat.findById(req.params.id)
+    const chat = await Chat.findOne({
+      _id: req.params.id,
+      members: req.user,
+      $or: [{ status: "active" }, { status: { $exists: false } }],
+    })
       .populate("members", "name avatar")
       .lean();
 
@@ -297,7 +309,11 @@ const getChatDetails = TryCatch(async (req, res, next) => {
       chat,
     });
   } else {
-    const chat = await Chat.findById(req.params.id);
+    const chat = await Chat.findOne({
+      _id: req.params.id,
+      members: req.user,
+      $or: [{ status: "active" }, { status: { $exists: false } }],
+    });
     if (!chat) return next(new ErrorHandler("Chat not found", 404));
 
     return res.status(200).json({
@@ -389,7 +405,10 @@ const getMessages = TryCatch(async (req, res, next) => {
   const resultPerPage = 20;
   const skip = (page - 1) * resultPerPage;
 
-  const chat = await Chat.findById(chatId);
+  const chat = await Chat.findOne({
+    _id: chatId,
+    $or: [{ status: "active" }, { status: { $exists: false } }],
+  });
 
   if (!chat) return next(new ErrorHandler("Chat not found", 404));
 

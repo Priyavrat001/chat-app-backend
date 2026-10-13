@@ -2,15 +2,17 @@ import { compare } from "bcrypt";
 import { NEW_REQUEST, REFETCH_CHATS } from "../constants/event.js";
 import { TryCatch } from "../middlewares/error.js";
 import { Chat } from "../model/chat.js";
+import { Message } from "../model/message.js";
 import { Request } from "../model/request.js";
 import { User } from "../model/user.js";
+import { Report } from "../model/report.js";
 import { cookieOptions, emitEvent, sendResponse, sendToken, uploadFilesToCloudinary } from "../utils/features.js";
 import { ErrorHandler } from "../utils/utility.js";
 import { getOtherMembers } from "../lib/helper.js";
 
 // Create new user and saving in the database and adding cookie and saving user data in cookie
 export const newUsers = TryCatch(async (req, res, next) => {
-    const { name, username, password, bio } = req.body;
+    const { name, username, password, bio, email } = req.body;
   
     const file = req.file;
   
@@ -28,6 +30,7 @@ export const newUsers = TryCatch(async (req, res, next) => {
       bio,
       username,
       password,
+      ...(email ? { email } : {}),
       avatar,
     });
   
@@ -46,13 +49,18 @@ export const login = TryCatch(async (req, res, next) => {
   
     if (!isMatch)
       return next(new ErrorHandler("Invalid Username or Password", 404));
-  
+
+    if (user.status !== "active")
+      return next(new ErrorHandler("This account is not active.", 403));
+
     sendToken(res, user, 200, `Welcome Back, ${user.name}`);
   });
 
 export const getMyProfile = TryCatch(async (req, res, next) => {
 
     const user = await User.findById(req.user);
+    if (!user || user.status !== "active")
+      return next(new ErrorHandler("This account is not active.", 403));
 
     res.status(200).json({ success: true, user })
 });
@@ -194,3 +202,49 @@ export const getMyFriends = TryCatch(async (req, res, next) => {
     }
 
 })
+
+export const createReport = TryCatch(async (req, res, next) => {
+    const { targetUser, targetChat, targetMessage, reason } = req.body;
+    const targets = [targetUser, targetChat, targetMessage].filter(Boolean);
+
+    if (targets.length !== 1)
+      return next(new ErrorHandler("Report exactly one account, chat, or message.", 400));
+
+    if (targetUser && targetUser.toString() === req.user.toString())
+      return next(new ErrorHandler("You cannot report your own account.", 400));
+
+    if (targetUser) {
+      const sharedChat = await Chat.exists({
+        members: { $all: [req.user, targetUser] },
+      });
+      if (!sharedChat)
+        return next(new ErrorHandler("You can report only users you have chatted with.", 404));
+    }
+
+    if (targetChat) {
+      const chat = await Chat.findOne({ _id: targetChat, members: req.user });
+      if (!chat) return next(new ErrorHandler("Chat not found.", 404));
+      if (!chat.groupChat)
+        return next(new ErrorHandler("Only group conversations can be reported as a group.", 400));
+    }
+
+    if (targetMessage) {
+      const message = await Message.findById(targetMessage).select("chat");
+      if (!message) return next(new ErrorHandler("Message not found.", 404));
+      const chat = await Chat.findOne({ _id: message.chat, members: req.user });
+      if (!chat) return next(new ErrorHandler("Message not found.", 404));
+    }
+
+    if (targetUser && !(await User.exists({ _id: targetUser })))
+      return next(new ErrorHandler("Account not found.", 404));
+
+    const report = await Report.create({
+      reporter: req.user,
+      targetUser,
+      targetChat,
+      targetMessage,
+      reason: reason.trim(),
+    });
+
+    return res.status(201).json({ success: true, reportId: report._id });
+});

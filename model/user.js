@@ -15,10 +15,24 @@ const schema = new mongoose.Schema({
         required:true,
         unique:true
     },
-    name:{
+    email:{
         type:String,
-        required:true
+        lowercase:true,
+        trim:true,
+        sparse:true,
+        unique:true
     },
+    role:{
+        type:String,
+        enum:["user", "moderator"],
+        default:"user"
+    },
+    status:{
+        type:String,
+        enum:["active", "suspended", "deactivated"],
+        default:"active"
+    },
+    lastSeenAt:Date,
     password:{
         type:String,
         required:true,

@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 
 import { Chat } from "../model/chat.js";
 import { Message } from "../model/message.js";
+import { AiUsage } from "../model/aiUsage.js";
 import { ErrorHandler } from "../utils/utility.js";
 import {
   buildChatHistoryAnswerPrompt,
@@ -43,7 +44,29 @@ const parseGeminiJson = (text) => {
 };
 
 // Send one bounded request to Gemini and normalize provider failures for the API.
-const generateJson = async (prompt) => {
+const generateJson = async (prompt, operation) => {
+  const startedAt = Date.now();
+  let outcome = "failure";
+  let providerStatus;
+  try {
+    const result = await generateJsonRequest(prompt, (status) => {
+      providerStatus = status;
+    });
+    outcome = "success";
+    return result;
+  } finally {
+    AiUsage.create({
+      operation,
+      outcome,
+      latencyMs: Date.now() - startedAt,
+      providerStatus,
+    }).catch((error) => {
+      console.error("Unable to record AI usage metrics:", error);
+    });
+  }
+};
+
+const generateJsonRequest = async (prompt, setProviderStatus) => {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     throw new ErrorHandler("AI features are not configured on this server.", 503);
@@ -81,6 +104,7 @@ const generateJson = async (prompt) => {
 
   // Read the body once so provider errors and successful JSON share the same path.
   const responseText = await response.text();
+  setProviderStatus(response.status);
   let payload;
 
   try {
@@ -184,6 +208,7 @@ export const suggestReplies = async (chatId, userId) => {
     buildReplySuggestionsPrompt(
       toPromptMessages(trimContextToBudget(messages)),
     ),
+    "reply-suggestions",
   );
 
   const suggestions = Array.isArray(result.suggestions)
@@ -209,6 +234,7 @@ export const summarizeConversation = async (chatId, userId) => {
     buildConversationSummaryPrompt(
       toPromptMessages(trimContextToBudget(messages)),
     ),
+    "summarize",
   );
 
   if (typeof result.summary !== "string" || !result.summary.trim()) {
@@ -267,6 +293,7 @@ export const answerChatHistoryQuestion = async (chatId, userId, question) => {
   const context = toPromptMessages(trimContextToBudget(relevantMessages));
   const result = await generateJson(
     buildChatHistoryAnswerPrompt(question, context),
+    "ask-history",
   );
 
   if (typeof result.answer !== "string" || !result.answer.trim()) {

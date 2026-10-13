@@ -1,6 +1,6 @@
 # Chat Application Backend
 
-This directory contains the Node.js backend for the chat application. It exposes a REST API and a Socket.IO server on the same HTTP server. MongoDB stores users, chats, friend requests, and messages; Cloudinary stores uploaded media.
+This directory contains the Node.js backend for the chat application. It exposes a REST API and a Socket.IO server on the same HTTP server. MongoDB stores users, chats, friend requests, messages, moderation reports, audit logs, and AI telemetry; Cloudinary stores uploaded media.
 
 This guide describes the behavior implemented in the repository today. The **Implementation notes and known issues** section calls out places where the code and its apparent intent do not currently match.
 
@@ -9,7 +9,7 @@ This guide describes the behavior implemented in the repository today. The **Imp
 - Node.js uses ES modules (`"type": "module"` in `package.json`).
 - Express handles HTTP routes mounted under `/api/v1`.
 - Socket.IO handles messages, typing/presence notifications, call signaling, and updates triggered by API operations.
-- Mongoose connects to MongoDB and defines the four persisted models described below.
+- Mongoose connects to MongoDB and defines the persisted models described below.
 - Cookie-based JWT authentication protects user routes and the Socket.IO handshake.
 - Multer accepts in-memory uploads; Cloudinary stores user avatars and chat attachments.
 - `express-validator` validates selected request bodies and route parameters. Validation failures and application errors use the common error response described below.
@@ -99,7 +99,7 @@ Validation errors return HTTP 400. Authentication failures generally return 401;
 
 | Method and path | Access | Input | Success response / behavior |
 | --- | --- | --- | --- |
-| `POST /user/new` | Public | Multipart fields `name`, `username`, `password`, `bio`, and file field `avatar`. Avatar is required; max upload size is 5 MB. | HTTP 201: `{ success, user, message }`; also sets the `chat-app` JWT cookie. Password is hashed before persistence. |
+| `POST /user/new` | Public | Multipart fields `name`, `username`, `password`, `bio`, optional `email`, and file field `avatar`. Avatar is required; max upload size is 5 MB. | HTTP 201: `{ success, user, message }`; also sets the `chat-app` JWT cookie. Password is hashed before persistence. |
 | `POST /user/login` | Public | JSON `{ "username": "...", "password": "..." }`. | HTTP 200: `{ success, user, message }`; sets the `chat-app` cookie. Invalid username/password returns 404 in the current controller. |
 | `GET /user/myprofile` | User | None. | `{ success: true, user }` for the authenticated user ID. |
 | `GET /user/logout` | User | None. | Clears `chat-app`; `{ success: true, message }`. |
@@ -108,6 +108,7 @@ Validation errors return HTTP 400. Authentication failures generally return 401;
 | `PUT /user/acceptrequest` | User | JSON `{ "requestId": "...", "accept": true }`; `accept` must be boolean. | On acceptance, creates a direct chat, deletes the request, emits `REFETCH_CHATS` to both users, and returns `{ success, message, senderId }`. On rejection, deletes the request and returns `{ success, message }`. Only the receiver may decide. |
 | `GET /user/notification` | User | None. | `{ success: true, allRequest: [{ _id, sender: { _id, name, avatar } }] }` for requests received by the current user. |
 | `GET /user/friends?chatId=...` | User | Optional chat ID. | `{ success: true, friends: [{ _id, name, avatar }] }`; returns the other participants from chats. With `chatId`, the controller attempts to return friends not already in that chat. |
+| `POST /user/report` | User | JSON with exactly one of `targetUser`, `targetChat`, or `targetMessage`, plus a non-empty `reason` (max 1,000 chars). | Creates a pending report. Chat/message reports require the reporter to be a chat member; account reports require a shared conversation. Admin review returns only the reported target and relevant metadata. |
 
 The route spelling is `/notification` (singular); the controller function itself is named `getNotifaction`.
 
@@ -129,7 +130,7 @@ Every route in this group requires user authentication.
 | `PUT /chat/:id` | JSON `{ "name": "new group name" }`. | Creator-only group rename. Emits `REFETCH_CHATS`; returns `{ success, message }`. |
 | `DELETE /chat/:id` | Chat ID in `id`. | Group deletion is creator-only; direct-chat deletion is restricted to a member. Deletes chat messages and attempts attachment cleanup, emits `REFETCH_CHATS`, and returns `{ success, message }`. Attachment cleanup is currently incomplete; see known issues. |
 
-For group creation and renaming, the controller uses the property name `groupChat`; the Mongoose schema currently declares `groupchat`. This mismatch can affect the group behavior described above.
+The Chat model declares the controller's `groupChat` property and reads the historical `groupchat` field for compatibility with older records.
 
 ### AI Services (`/api/v1/ai`)
 
@@ -154,10 +155,16 @@ AI output is generated on demand and is not sent or saved as a chat message. Err
 | `POST /admin/verify` | JSON `{ "secretKey": "..." }`. | Compares with `ADMIN_SECRET_KEY`, sets a signed admin cookie with a 15-minute max age, and returns `{ success, message }`. Invalid key returns 401. |
 | `GET /admin/logout` | None. | Clears the admin cookie; `{ success: true, message }`. This route does not require an existing admin cookie. |
 | `GET /admin/` | Admin cookie. | `{ "admin": true }`. |
-| `GET /admin/users` | Admin cookie. | `{ success: true, users: [...] }`; includes user name, username, avatar URL, ID, and computed `friends`/`groups` counts. Those counts are currently incorrect; see known issues. |
-| `GET /admin/chats` | Admin cookie. | `{ success: true, allChats: [...] }`; includes chat name/type, avatar URLs, populated members, creator summary, member count, and message count. |
-| `GET /admin/messages` | Admin cookie. | `{ success: true, messages: [...] }`; includes message content/attachments/time, chat ID/type, and sender ID/name/avatar. |
-| `GET /admin/stats` | Admin cookie. | `{ success: true, stats: { groupsCount, usersCount, messagesCount, totalChatsCount, messagesChart } }`. `messagesChart` is a seven-element count array for the current trailing seven-day window, ordered oldest-to-newest. |
+| `GET /admin/users?search=&page=1&limit=25&sort=createdAt&order=desc` | Admin cookie. | Search by name, username, email, or ID; returns users with account status, role, last activity, chat/message counts, and pagination. Limit is capped at 100. |
+| `PATCH /admin/users/:id/status` | JSON `{ "status": "active|suspended|deactivated", "reason": "..." }`. | Updates account state, disconnects suspended/deactivated sessions, and writes an audit entry. A reason is required. |
+| `PATCH /admin/users/:id/role` | Admin cookie; JSON `{ "role": "user|moderator", "reason": "..." }`. | Assigns/removes the moderator role and records the change. |
+| `GET /admin/groups?search=&status=&page=1&limit=25` | Admin cookie or active moderator user cookie. | Returns paginated group metadata, member counts, creator, status, and message counts. |
+| `PATCH /admin/groups/:id/status` | Admin cookie or active moderator user cookie; JSON `{ "status": "active|restricted|archived", "reason": "..." }`. | Restricts, archives, or restores a group and records the actor. Restricted/archived groups are unavailable for messaging. |
+| `GET /admin/reports?status=pending&page=1&limit=25` | Admin cookie or active moderator user cookie. | Returns submitted reports with only reported content/account/group and reporter metadata; does not expose unreported conversation histories. |
+| `PATCH /admin/reports/:id` | Admin cookie or active moderator user cookie; JSON `{ "status": "reviewing|resolved|dismissed", "reason": "..." }`. | Updates the moderation decision and writes an audit entry with the actor. A reason is required. |
+| `GET /admin/audit-logs?page=1&limit=25` | Admin cookie. | Returns paginated sensitive account, group, and report actions with their reason and target metadata. |
+| `GET /admin/health` | Admin cookie. | Returns database connection state, a live Cloudinary ping status, socket connections, uptime, in-memory API request/failure/latency metrics since restart, and seven-day AI request/failure/latency/quota metrics. Secrets are not included; provider cost is unavailable. |
+| `GET /admin/stats?range=day|week|month` | Admin cookie. | Returns total/active/new users, messages, groups and chats, plus aligned user-growth and messaging chart labels/series. Active users are based on socket activity during the last 15 minutes. |
 
 ## Socket.IO
 
@@ -248,18 +255,17 @@ All four schemas use Mongoose timestamps (`createdAt`, `updatedAt`). ObjectId re
 
 These notes describe current behavior and are useful when debugging or extending the backend. They are not claims that the behavior is desirable.
 
-1. **Group-chat schema naming mismatch:** `Chat` declares `groupchat`, while controllers and API responses use `groupChat`. Mongoose schemas are strict by default, so writes to the undeclared `groupChat` property may be discarded and group queries may not behave as intended. Unify the field name before relying on group creation, group listing, or group-only permissions.
+1. **Shared admin identity:** Admin sessions use one configured shared secret rather than individual administrator accounts. Audit entries identify this shared actor as `admin`; moderators authenticate with their normal user session and are limited to reported-content review and group moderation.
 2. **Attachment property mismatch:** `Message` declares `attachment`, but chat deletion searches for `attachments` and admin message transformation reads `attachments`. As a result, attachment cleanup/admin output do not match the persisted schema. In addition, `deleteFilesFromCloudinary` is empty, so remote files are not deleted.
 3. **Sensitive auth response risk:** `sendToken` serializes the supplied Mongoose user document directly. Login explicitly selects `password`, and registration returns the just-created user document; do not assume `select: false` removes the password field from these response objects. Redact password before returning user data and verify existing API responses do not expose password hashes.
 4. **Socket authorization:** The `NEW_MESSAGE` handler trusts the client-provided `members`, `chatId`, and message body. It does not verify that the authenticated user belongs to the chat before broadcasting or persisting. Other signaling events also rely on client-supplied participant IDs. Validate membership and derive recipients from trusted database state before exposing this backend publicly.
 5. **Chat-details authorization:** `GET /chat/:id` verifies the chat exists but currently does not verify the requesting user is one of its members.
 6. **One socket per user:** `userSocketIDs` stores one socket ID per user. A second tab/device overwrites the first; when either socket disconnects, the map entry is deleted without checking whether another connection remains. Online state and event delivery can therefore be inaccurate across multiple connections.
 7. **Group-member filtering and validation:** `GET /user/friends?chatId=...` uses `Array.includes` with ObjectId values to test existing membership, which may not compare IDs by value. The add-members route defines no active validator despite an `addMemberValidator` existing, and its controller assumes supplied user IDs resolve to users.
-8. **Admin user counts:** `getAllUsers` uses `Chat.groupChat` (the model constructor) as if it were a chat document field. The resulting `friends` and `groups` counts are not reliable.
-9. **Environment-mode expression:** `app.js` defines `envMode` as `process.env.NODE_ENV === "DEVELOPEMENT" || "PRODUCTION"`. The misspelled value and `||` string make this behave differently from a normal development/production mode switch; the error middleware's development detail check will not work as intended.
-10. **Socket authentication middleware is registered twice:** `app.js` installs two Socket.IO authentication middleware functions, both invoking `socketAuthenticator`. Keep one correctly configured cookie parser/authentication path to avoid duplicate work or handshake issues.
-11. **Development seeder is incomplete:** `seeders/user.js` does not expose a package script. Some functions also contain runtime/logical defects (for example, `Chst` is undefined in message seeding, and group seeding treats a number as if it had a `.length`). Do not use it as a reliable setup step without fixing and testing it.
-12. **Message consistency:** Socket text messages are broadcast before the database write completes, and their real-time `_id` is a UUID while the stored message receives a MongoDB ObjectId. A persistence failure can therefore leave clients displaying a message that was not saved, and the realtime ID differs from the later fetched ID.
+8. **Environment-mode expression:** `app.js` defines `envMode` as `process.env.NODE_ENV === "DEVELOPEMENT" || "PRODUCTION"`. The misspelled value and `||` string make this behave differently from a normal development/production mode switch; the error middleware's development detail check will not work as intended.
+9. **Socket authentication middleware is registered twice:** `app.js` installs two Socket.IO authentication middleware functions, both invoking `socketAuthenticator`. Keep one correctly configured cookie parser/authentication path to avoid duplicate work or handshake issues.
+10. **Development seeder is incomplete:** `seeders/user.js` does not expose a package script. Some functions also contain runtime/logical defects (for example, `Chst` is undefined in message seeding, and group seeding treats a number as if it had a `.length`). Do not use it as a reliable setup step without fixing and testing it.
+11. **Message consistency:** Socket text messages are broadcast before the database write completes, and their real-time `_id` is a UUID while the stored message receives a MongoDB ObjectId. A persistence failure can therefore leave clients displaying a message that was not saved, and the realtime ID differs from the later fetched ID.
 
 ## Scripts and Dependencies
 
